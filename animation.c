@@ -16,6 +16,8 @@
 #include "log.h"
 #include "string_list.h"
 
+volatile sig_atomic_t finish_animation = 0;
+
 static inline void center2top_left(struct image_info *image, int cx, int cy,
 		int *top_left_x, int *top_left_y)
 {
@@ -24,47 +26,65 @@ static inline void center2top_left(struct image_info *image, int cx, int cy,
 }
 
 /**
+ * Draws the current frame
+ */
+static inline int draw(struct animation *banner)
+{
+        int x, y;
+        struct image_info *frame = &banner->frames[banner->frame_num];
+
+        center2top_left(frame, banner->x, banner->y, &x, &y);
+        return fb_write_bitmap(banner->fb, x, y, frame);
+}
+
+/**
  * Run the animation either infinitely or until 'frames' frames have been shown
  */
-int animation_run(struct animation *banner, int frames)
+int animation_run(struct animation *banner, int start, int end)
 {
-	const int infinitely = frames < 0;
-	int fnum = banner->frame_num;
+        if (end == 0) {
+                end = banner->frame_count - 1;
+        }
+
 	int rc = 0;
 
-	while (infinitely || frames--) {
-		int x, y;
-		struct image_info *frame = &banner->frames[fnum];
-
-		center2top_left(frame, banner->x, banner->y, &x, &y);
-		rc = fb_write_bitmap(banner->fb, x, y, frame);
-
+	while (1) {
+		rc = draw(banner);
 		if (rc)
 			break;
 
-		if (++fnum == banner->frame_count)
-			fnum = 0;
+                int fnum = banner->frame_num + 1;
+
+                if (finish_animation) {
+                        if (fnum >= banner->frame_count) {
+                                break;
+                        }
+                        else {
+                                banner->frame_num = fnum;
+                        }
+                }
+                else {
+                        if (fnum > end)
+			        banner->frame_num = start;
+                        else
+                                banner->frame_num = fnum;
+                }
 
 		if (banner->interval) {
 			const struct timespec sleep_time = {
 				.tv_sec = banner->interval / 1000,
-				.tv_nsec = (banner->interval % 1000) * 1000000,
-			};
+				.tv_nsec = (banner->interval % 1000) * 1000000 };
 			nanosleep(&sleep_time, NULL);
 		}
 	}
-
-	banner->frame_num = fnum;
 
 	return rc;
 }
 
 int animation_init(struct string_list *filenames, int filenames_count,
-		struct screen_info *fb, struct animation *a)
+		struct screen_info *fb, struct animation *a, int display_first)
 {
     int i;
-    struct image_info *frame;
-    int screen_w, screen_h;
 
     if (!fb->fb_size) {
         LOG(LOG_ERR, "Unable to init animation against uninitialized "
@@ -73,8 +93,11 @@ int animation_init(struct string_list *filenames, int filenames_count,
     }
 
     a->fb = fb;
+    a->x = fb->width / 2;
+    a->y = fb->height / 2;
     a->frame_num = 0;
     a->frame_count = filenames_count;
+
     a->frames = malloc(filenames_count * sizeof(struct image_info));
     if (a->frames == NULL) {
         LOG(LOG_ERR, "Unable to get %d bytes of memory for animation",
@@ -82,15 +105,15 @@ int animation_init(struct string_list *filenames, int filenames_count,
         return -1;
     }
 
-    for (i = 0; i < filenames_count; ++i, filenames = filenames->next)
-        if (bmp_read(filenames->s, &a->frames[i]))
+    for (i = 0; i < filenames_count; ++i, filenames = filenames->next) {
+        if (bmp_read(filenames->s, &a->frames[i])) {
             return -1;
-
-    screen_w = fb->width;
-    screen_h = fb->height;
-    frame = &a->frames[0];
-    a->x = screen_w / 2;
-    a->y = screen_h / 2;
+        }
+        if (i == 0 && display_first) {
+            if (draw(a))
+                return -1;
+        }
+    }
 
     return 0;
 }

@@ -13,6 +13,8 @@
 #ifndef _ANIMATION_H
 #define _ANIMATION_H
 
+#include <signal.h>
+
 struct screen_info;
 struct string_list;
 struct commands_data;
@@ -28,8 +30,10 @@ struct animation {
     struct commands_data *commands;
 };
 
+extern volatile sig_atomic_t finish_animation;
+
 int animation_init(struct string_list *filenames, int filenames_count,
-		struct screen_info *fb, struct animation *a);
-int animation_run(struct animation *banner, int frames);
+		struct screen_info *fb, struct animation *a, int display_first);
+int animation_run(struct animation *banner, int start, int end);
 
 #endif /* _ANIMATION_H */

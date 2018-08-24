@@ -29,16 +29,17 @@
 #endif
 
 #include "animation.h"
-#include "commands.h"
 #include "fb.h"
 #include "log.h"
 #include "string_list.h"
 
 int Interactive = 0; /* Not daemon */
 int LogDebug = 0; /* Do not suppress debug messages when logging */
-int RunCount = -1; /* Repeat a given number of times, then exit */
+int StartFrame = 0; /* Loops back to this frame index */
+int EndFrame = 0; /* Index of the end of the loop */
 int PreserveMode = 0; /* Do not restore previous framebuffer mode */
-char *PipePath = NULL; /* A command pipe to control animation */
+int AllowFinish = 0; /* Waits for the animation to complete before terminating */
+int DisplayFirst = 0; /* Displays the first frame while the rest finish loading */
 
 static struct screen_info _Fb;
 
@@ -52,32 +53,22 @@ static int usage(char *cmd, char *msg)
 
 	if (msg)
 		printf("%s\n", msg);
-	printf("Usage: %s [options] [interval[fps]] frame.bmp ...\n\n",
-			command);
-	printf("-D, --no-daemon       Do not fork into the background, log\n"
-	       "                      to stdout\n");
-	printf("-v, --verbose         Do not suppress debug messages in the\n"
-	       "                      log (may also be suppressed by syslog"
-	                            " configuration)\n");
-	printf("-c [<num>],\n"
-	       "--run-count[=<num>]   Display the sequence of frames <num>\n"
-	       "                      times, then exit. If <num> is omitted,\n"
-	       "                      repeat only once. If it is less than\n"
-	       "                      1, ignore the option\n");
-	printf("-p, --preserve-mode   Do not restore framebuffer mode on exit\n"
-	       "                      which usually means leaving last frame"
-		                    " displayed\n");
-	printf("-i <fifo>,\n"
-	       "--command-pipe=<fifo> Open a named pipe <fifo> and wait for\n"
-	       "                      commands. The pipe should exist. If -c\n"
-	       "                      is specified, it is ignored. See %s(1)\n"
-	       "                      man page for command syntax.\n",
-	       command);
-	printf("interval              Interval in milliseconds between frames.\n"
-	       "                      If \'fps\' suffix is present then it is in\n"
-	       "                      frames per second. Default:  41 (24fps)\n");
-	printf("frame.bmp ...         list of filenames of frames in BMP"
-			                    " format\n");
+	printf("Usage: %s [options] [interval[fps]] frame.bmp ...\n\n", command);
+	printf("-D, --no-daemon       Do not fork into the background, log to stdout\n");
+	printf("-v, --verbose         Do not suppress debug messages in the log\n"
+               "                      (may also be suppressed by syslog configuration)\n");
+	printf("-s <num>,\n"
+	       "--start=<num>         Loop starts at frame <num>. Defaults to 0.\n");
+        printf("-e <num>,\n"
+               "--end=<num>           Loop ends at frame <num>. Defaults to last frame.\n");
+	printf("-p, --preserve        Do not restore framebuffer mode on exit which\n"
+	       "                      usually means leaving last displayed\n");
+        printf("-f, --finish          Allows the animation to complete before termination.\n");
+        printf("-d, --display-first   Display the first frame while the rest finish loading.\n");
+	printf("interval              Interval in milliseconds between frames. If \'fps\'\n"
+	       "                      suffix is present then it is in frames per second\n"
+	       "                      Default:  41 (24fps)\n");
+	printf("frame.bmp ...         List of filenames of frames in BMP format\n");
 
 	return 1;
 }
@@ -85,17 +76,19 @@ static int usage(char *cmd, char *msg)
 static int get_options(int argc, char **argv)
 {
 	static struct option _longopts[] = {
-			{"no-daemon",	no_argument,&Interactive, 1}, /* -D */
-			{"verbose",	no_argument,&LogDebug, 1},    /* -v */
-			{"run-count",	optional_argument,0, 'c'},    /* -c */
-			{"command-pipe",required_argument,0, 'i'},    /* -i */
-			{"preserve-mode",no_argument,&PreserveMode,1},/* -p */
+			{"no-daemon",     no_argument, &Interactive, 1},  /* -D */
+			{"verbose",       no_argument, &LogDebug, 1},     /* -v */
+			{"start",         required_argument, 0, 's'},     /* -s */
+                        {"end",           required_argument, 0, 'e'},     /* -e */
+			{"preserve",      no_argument, &PreserveMode, 1}, /* -p */
+                        {"finish",        no_argument, &AllowFinish, 1},  /* -f */
+                        {"display-first", no_argument, &DisplayFirst, 1}, /* -d */
 			{0, 0, 0, 0}
 	};
 
 	while (1) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "Dvc::i:p", _longopts,
+		int c = getopt_long(argc, argv, "Dvs:e:pfd", _longopts,
 				&option_index);
 
 		if (c == -1)
@@ -112,24 +105,39 @@ static int get_options(int argc, char **argv)
 			LogDebug = 1;
 			break;
 
-		case 'p':
-			PreserveMode = 1;
-			break;
-
-		case 'c':
+		case 's':
 			if (!optarg)
-				RunCount = 1;
+				StartFrame = 0;
 			else {
 				int v = (int)strtol(optarg, NULL, 0);
 
 				if (v > 0)
-					RunCount = v;
+					StartFrame = v;
 			}
 			break;
 
-		case 'i':
-			PipePath = optarg;
+                case 'e':
+                        if (!optarg)
+                                EndFrame = 0;
+                        else {
+                                int v = (int)strtol(optarg, NULL, 0);
+
+                                if (v > 0)
+                                        EndFrame = v;
+                        }
+                        break;
+
+                case 'p':
+                        PreserveMode = 1;
+                        break;
+
+		case 'f':
+			AllowFinish = 1;
 			break;
+
+                case 'd':
+                        DisplayFirst = 1;
+                        break;
 
 		case '?':
 			/* The error message has already been printed
@@ -187,8 +195,13 @@ static void free_resources(void)
 
 static void sig_handler(int num)
 {
-	LOG(LOG_INFO, "signal %d caught", num);
-	exit(0);
+        if (AllowFinish) {
+                finish_animation = 1;
+        }
+        else {
+                LOG(LOG_INFO, "signal %d caught", num);
+	        exit(0);
+        }
 }
 
 static inline int init_proper_exit(void)
@@ -259,13 +272,11 @@ static int init(int argc, char **argv, struct animation *banner)
 		return 1;
 	if (init_proper_exit())
 		return 1;
-	if (animation_init(filenames, filenames_count, &_Fb, banner))
+	if (animation_init(filenames, filenames_count, &_Fb, banner, DisplayFirst))
 		return 1;
 	string_list_destroy(filenames);
 
-	if (banner->frame_count == 1 && RunCount == 1)
-		banner->interval = 0; /* Single frame, exit after showing it */
-	else if (banner->interval == (unsigned int)-1)
+	if (banner->interval == (unsigned int)-1)
 		banner->interval = 1000 / 24; /* 24fps */
 
 	if (!Interactive && daemonify())
@@ -276,17 +287,11 @@ static int init(int argc, char **argv, struct animation *banner)
 
 int main(int argc, char **argv) {
 	struct animation banner = { .interval = (unsigned int)-1, };
-	int rc = 0;
 
 	if (init(argc, argv, &banner))
 		return 1;
 	LOG(LOG_INFO, "started");
 
-	if (PipePath)
-		rc = commands_fifo(PipePath, &banner);
-	else
-		rc = animation_run(&banner, RunCount * banner.frame_count);
-
-	return rc;
+	return animation_run(&banner, StartFrame, EndFrame);
 }
 
