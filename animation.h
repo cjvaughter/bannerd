@@ -26,6 +26,8 @@ struct animation {
     struct image_info *frames;
     int frame_num;
     int frame_count;
+    int loop_start;
+    int loop_end;
     unsigned int interval;
     struct commands_data *commands;
 };
@@ -33,7 +35,7 @@ struct animation {
 extern volatile sig_atomic_t finish_animation;
 
 int animation_init(struct string_list *filenames, int filenames_count,
-		struct screen_info *fb, struct animation *a, int display_first);
-int animation_run(struct animation *banner, int start, int end);
+		struct screen_info *fb, struct animation *a, int display_first, int loop_start, int loop_end);
+int animation_run(struct animation *banner);
 
 #endif /* _ANIMATION_H */

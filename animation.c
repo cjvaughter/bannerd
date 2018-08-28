@@ -11,7 +11,7 @@
  */
 
 #include "animation.h"
-#include "bmp.h"
+#include "image.h"
 #include "fb.h"
 #include "log.h"
 #include "string_list.h"
@@ -40,12 +40,8 @@ static inline int draw(struct animation *banner)
 /**
  * Run the animation either infinitely or until 'frames' frames have been shown
  */
-int animation_run(struct animation *banner, int start, int end)
+int animation_run(struct animation *banner)
 {
-        if (end == 0) {
-                end = banner->frame_count - 1;
-        }
-
 	int rc = 0;
 
 	while (1) {
@@ -57,15 +53,15 @@ int animation_run(struct animation *banner, int start, int end)
 
                 if (finish_animation) {
                         if (fnum >= banner->frame_count) {
-                                break;
+                            break;
                         }
                         else {
-                                banner->frame_num = fnum;
+                            banner->frame_num = fnum;
                         }
                 }
                 else {
-                        if (fnum > end)
-			        banner->frame_num = start;
+                        if (fnum > banner->loop_end)
+			        banner->frame_num = banner->loop_start;
                         else
                                 banner->frame_num = fnum;
                 }
@@ -81,8 +77,9 @@ int animation_run(struct animation *banner, int start, int end)
 	return rc;
 }
 
+
 int animation_init(struct string_list *filenames, int filenames_count,
-		struct screen_info *fb, struct animation *a, int display_first)
+		struct screen_info *fb, struct animation *a, int display_first, int loop_start, int loop_end)
 {
     int i;
 
@@ -97,6 +94,8 @@ int animation_init(struct string_list *filenames, int filenames_count,
     a->y = fb->height / 2;
     a->frame_num = 0;
     a->frame_count = filenames_count;
+    a->loop_start = loop_start;
+    a->loop_end = (loop_end == 0) ? filenames_count : loop_end;
 
     a->frames = malloc(filenames_count * sizeof(struct image_info));
     if (a->frames == NULL) {
@@ -106,17 +105,15 @@ int animation_init(struct string_list *filenames, int filenames_count,
     }
 
     for (i = 0; i < filenames_count; ++i, filenames = filenames->next) {
-        if (bmp_read(filenames->s, &a->frames[i])) {
+        if (image_read(filenames->s, &a->frames[i])) {
             return -1;
         }
         if (i == 0 && display_first) {
             if (draw(a))
-                return -1;
+               return -1;
         }
     }
 
     return 0;
 }
-
-
 

@@ -11,6 +11,7 @@
  */
 
 #include <errno.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <libgen.h>
 #include <signal.h>
@@ -40,6 +41,12 @@ int EndFrame = 0; /* Index of the end of the loop */
 int PreserveMode = 0; /* Do not restore previous framebuffer mode */
 int AllowFinish = 0; /* Waits for the animation to complete before terminating */
 int DisplayFirst = 0; /* Displays the first frame while the rest finish loading */
+int DisableBlink = 0; /* Disables the consle cursor while running */
+
+int blink_file;
+char previous_console_blink;
+const char BLINK_ON = '1';
+const char BLINK_OFF = '0';
 
 static struct screen_info _Fb;
 
@@ -53,7 +60,7 @@ static int usage(char *cmd, char *msg)
 
 	if (msg)
 		printf("%s\n", msg);
-	printf("Usage: %s [options] [interval[fps]] frame.bmp ...\n\n", command);
+	printf("Usage: %s [options] [interval[fps]] frame.ext ...\n\n", command);
 	printf("-D, --no-daemon       Do not fork into the background, log to stdout\n");
 	printf("-v, --verbose         Do not suppress debug messages in the log\n"
                "                      (may also be suppressed by syslog configuration)\n");
@@ -65,10 +72,11 @@ static int usage(char *cmd, char *msg)
 	       "                      usually means leaving last displayed\n");
         printf("-f, --finish          Allows the animation to complete before termination.\n");
         printf("-d, --display-first   Display the first frame while the rest finish loading.\n");
+        printf("-b, --disable-blink   Disables the console cursor blink while running.\n");
 	printf("interval              Interval in milliseconds between frames. If \'fps\'\n"
 	       "                      suffix is present then it is in frames per second\n"
 	       "                      Default:  41 (24fps)\n");
-	printf("frame.bmp ...         List of filenames of frames in BMP format\n");
+	printf("frame.ext ...         List of filenames of frames in BMP or PNG format\n");
 
 	return 1;
 }
@@ -83,12 +91,13 @@ static int get_options(int argc, char **argv)
 			{"preserve",      no_argument, &PreserveMode, 1}, /* -p */
                         {"finish",        no_argument, &AllowFinish, 1},  /* -f */
                         {"display-first", no_argument, &DisplayFirst, 1}, /* -d */
+                        {"disable-blink", no_argument, &DisableBlink, 1}, /* -b */
 			{0, 0, 0, 0}
 	};
 
 	while (1) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "Dvs:e:pfd", _longopts,
+		int c = getopt_long(argc, argv, "Dvs:e:pfdb", _longopts,
 				&option_index);
 
 		if (c == -1)
@@ -137,6 +146,10 @@ static int get_options(int argc, char **argv)
 
                 case 'd':
                         DisplayFirst = 1;
+                        break;
+
+                case 'b':
+                        DisableBlink = 1;
                         break;
 
 		case '?':
@@ -190,6 +203,10 @@ static int daemonify(void)
 static void free_resources(void)
 {
 	fb_close(&_Fb, !PreserveMode);
+        if (blink_file) {
+                write(blink_file, &previous_console_blink, sizeof(char));
+                close(blink_file);
+        }
 	LOG(LOG_INFO, "exited");
 }
 
@@ -214,6 +231,30 @@ static inline int init_proper_exit(void)
 	if (sigaction(SIGINT, &action, NULL)
 			|| sigaction(SIGTERM, &action, NULL))
 		ERR_RET(-1, "could not install signal handlers");
+
+        if (DisableBlink) {
+                blink_file = open("/sys/class/graphics/fbcon/cursor_blink", O_RDWR | O_NONBLOCK);
+                if (blink_file == -1) {
+                        LOG(LOG_ERR, "could not open cursor_blink file");
+		        return 0;	
+                }
+
+                int size = read(blink_file, &previous_console_blink, sizeof(char));
+                if(size < sizeof(char)) {
+                        LOG(LOG_ERR, "failed to read cursor_blink file");
+                        close(blink_file);
+                        blink_file = -1;
+                        return 0;
+                }
+
+                size = write(blink_file, &BLINK_OFF, sizeof(char));
+                if(size < sizeof(char)) {
+                        LOG(LOG_ERR, "failed to write cursor_blink file");
+                        close(blink_file);
+                        blink_file = -1;
+                        return 0;
+                }
+        }
 
 	return 0;
 }
@@ -272,9 +313,9 @@ static int init(int argc, char **argv, struct animation *banner)
 		return 1;
 	if (init_proper_exit())
 		return 1;
-	if (animation_init(filenames, filenames_count, &_Fb, banner, DisplayFirst))
+	if (animation_init(filenames, filenames_count, &_Fb, banner, DisplayFirst, StartFrame, EndFrame))
 		return 1;
-	string_list_destroy(filenames);
+        string_list_destroy(filenames);
 
 	if (banner->interval == (unsigned int)-1)
 		banner->interval = 1000 / 24; /* 24fps */
@@ -292,6 +333,6 @@ int main(int argc, char **argv) {
 		return 1;
 	LOG(LOG_INFO, "started");
 
-	return animation_run(&banner, StartFrame, EndFrame);
+	return animation_run(&banner);
 }
 

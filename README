@@ -1,6 +1,6 @@
                         A framebuffer animation daemon
 
-  bannerd is a very simple program that reads several bitmap files, forks into
+  bannerd is a very simple program that reads several image files, forks into
 background and renders them to framebuffer with the configured interval. Since
 all the decompression (if any) work is done at the start, there is very little
 overhead when the animation is rendered. The only thing that the program does
@@ -10,36 +10,32 @@ e.g. boot animation. For use on desktops many more powerful programs are
 available, e.g. Plymouth (http://www.freedesktop.org/wiki/Software/Plymouth) and
 usplash (https://launchpad.net/usplash).
 
-  Animation that bannerd renders consists of several frames read from BMP files
-in the order given in commandline. It is displayed with configured interval in
-milliseconds or with the default 24fps frequency. It can also consist of one
+  Animation that bannerd renders consists of several frames read from BMP or PNG
+files in the order given in commandline. It is displayed with configured interval
+in milliseconds or with the default 24fps frequency. It can also consist of one
 frame in which case the program can be made to immediately exit, leaving it on
 screen. Each frame may have different size but is centered on the screen.
 
   The complete form of its usage is:
 
-    bannerd [options] [interval[fps]] frame.bmp ...
+    bannerd [options] [interval[fps]] frame.ext ...
 
-    -D, --no-daemon       Do not fork into the background, log
-                          to stdout
-    -v, --verbose         Do not suppress debug messages in the
-                          log (may also be suppressed by syslog configuration)
-    -c [<num>],
-    --run-count[=<num>]   Display the sequence of frames <num>
-                          times, then exit. If <num> is omitted,
-                          repeat only once. If it is less than
-                          1, ignore the option
-    -p, --preserve-mode   Do not restore framebuffer mode on exit
-                          which usually means leaving last frame displayed
-    -i <fifo>,
-    --command-pipe=<fifo> Open a named pipe <fifo> and wait for
-                          commands. The pipe should exist. If -c
-                          is specified, it is ignored. See bannerd(1)
-                          man page for command syntax.
-    interval              Interval in milliseconds between frames.
-                          If 'fps' suffix is present then it is in
-                          frames per second. Default:  41 (24fps)
-    frame.bmp ...         list of filenames of frames in BMP format
+    -D, --no-daemon       Do not fork into the background, log to stdout
+    -v, --verbose         Do not suppress debug messages in the log
+                          (may also be suppressed by syslog configuration)
+    -s <num>,
+    --start=<num>         Loop starts at frame <num>. Defaults to 0.
+    -e <num>,
+    --end=<num>           Loop ends at frame <num>. Defaults to last frame.
+    -p, --preserve        Do not restore framebuffer mode on exit which
+                          usually means leaving last displayed
+    -f, --finish          Allows the animation to complete before termination.
+    -d, --display-first   Display the first frame while the rest finish loading.
+    -b, --disable-blink   Disables the console cursor blink while running.
+    interval              Interval in milliseconds between frames. If 'fps'
+                          suffix is present then it is in frames per second
+                          Default:  41 (24fps)
+    frame.ext ...         List of filenames of frames in BMP or PNG format
 
 
   REQUIREMENTS
@@ -83,19 +79,10 @@ per second), you could use
 
     # pkill -TERM bannerd
 
-  If you want the program to run once through the sequence of frames and then
-exit by itself, you can use
-
-    # bannerd -c1 ?.bmp
-
-  A useful way to display a single image and exit, leaving it on screen, is
-
-    # bannerd -pc image.bmp
-
 
   LIMITATIONS
 
-  The program supports only BMP format. Support for other fomats would require
+  The program supports BMP or PNG format. Support for other fomats would require
 either implementing parsers from scratch or an external dependency on a library
 which is not desirable for some embedded systems. Configurable support for PNG
 and some other formats will be added later, though.
@@ -105,10 +92,12 @@ ARGB1555, XRGB1555), 24bpp (RGB888), 32bpp (ARGB8888, RGBA8888, RGBX8888).
 Monochrome, 2bpp, 4bpp and 8bpp images are not supported. Bitmaps must be
 either uncompressed (most common format) or use bitmasks.
 
-  All the bitmap data is kept in memory in 32bpp mode to simplify rendering and
+  PNG files must be 32bpp progressive.
+
+  All the image data is kept in memory in 32bpp mode to simplify rendering and
 not worsen 32bpp bitmap quality at the same time. This means considerable
 amount of memory consumed by the process for large animations: for a 800 x 480
-32bpp bitmap 1500kB of memory are needed. Thus, long fullscreen animations may
+32bpp image 1500kB of memory are needed. Thus, long fullscreen animations may
 require a lot of memory.
 
   At the moment, alpha blending of images is not supported.

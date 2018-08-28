@@ -13,6 +13,8 @@
 #ifndef FB_H
 #define FB_H
 
+#include "image.h"
+
 struct screen_info {
     int fd;
     int width;
@@ -22,14 +24,6 @@ struct screen_info {
     int stride;
     int fb_size;
 };
-
-struct image_info {
-    int width;
-    int height;
-    int is_bmp;
-    unsigned long *pixel_buffer;
-};
-
 
 
 int fb_init(struct screen_info *sd);
