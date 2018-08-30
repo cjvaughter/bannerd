@@ -28,14 +28,16 @@ struct animation {
     int frame_count;
     int loop_start;
     int loop_end;
+    int wait_frame;
+    int wait_time;
     unsigned int interval;
     struct commands_data *commands;
 };
 
 extern volatile sig_atomic_t finish_animation;
 
-int animation_init(struct string_list *filenames, int filenames_count,
-		struct screen_info *fb, struct animation *a, int display_first, int loop_start, int loop_end);
+int animation_init(struct string_list *filenames, int filenames_count, struct screen_info *fb,
+                       struct animation *a, int display_first, int loop_start, int loop_end, int wait_frame, int wait_time);
 int animation_run(struct animation *banner);
 
 #endif /* _ANIMATION_H */

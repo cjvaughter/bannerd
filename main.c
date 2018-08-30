@@ -42,6 +42,8 @@ int PreserveMode = 0; /* Do not restore previous framebuffer mode */
 int AllowFinish = 0; /* Waits for the animation to complete before terminating */
 int DisplayFirst = 0; /* Displays the first frame while the rest finish loading */
 int DisableBlink = 0; /* Disables the consle cursor while running */
+int WaitFrame = -1; /* The frame to wait at */
+int WaitTime = 0; /* How long to wait (in ms) at the wait frame */
 
 int blink_file;
 char previous_console_blink;
@@ -73,6 +75,11 @@ static int usage(char *cmd, char *msg)
         printf("-f, --finish          Allows the animation to complete before termination.\n");
         printf("-d, --display-first   Display the first frame while the rest finish loading.\n");
         printf("-b, --disable-blink   Disables the console cursor blink while running.\n");
+        printf("-w <num>\n"
+               "-t <time>\n"
+               "--wait <num>,\n"
+               "--wait-time <time>    Waits at the specified frame for the specified time (ms).\n"
+               "                      Both must be specified to take effect.\n");
 	printf("interval              Interval in milliseconds between frames. If \'fps\'\n"
 	       "                      suffix is present then it is in frames per second\n"
 	       "                      Default:  41 (24fps)\n");
@@ -92,12 +99,14 @@ static int get_options(int argc, char **argv)
                         {"finish",        no_argument, &AllowFinish, 1},  /* -f */
                         {"display-first", no_argument, &DisplayFirst, 1}, /* -d */
                         {"disable-blink", no_argument, &DisableBlink, 1}, /* -b */
+                        {"wait",          required_argument, 0, 'w'},     /* -w */
+                        {"wait-time",     required_argument, 0, 't'},     /* -t */
 			{0, 0, 0, 0}
 	};
 
 	while (1) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "Dvs:e:pfdb", _longopts,
+		int c = getopt_long(argc, argv, "Dvs:e:pfdbw:t:", _longopts,
 				&option_index);
 
 		if (c == -1)
@@ -150,6 +159,28 @@ static int get_options(int argc, char **argv)
 
                 case 'b':
                         DisableBlink = 1;
+                        break;
+
+                case 'w':
+                        if (!optarg)
+                                WaitFrame = -1;
+                        else {
+                                int v = (int)strtol(optarg, NULL, 0);
+
+                                if (v >= 0)
+                                        WaitFrame = v;
+                        }
+                        break;
+
+                case 't':
+                        if (!optarg)
+                                WaitTime = 0;
+                        else {
+                                int v = (int)strtol(optarg, NULL, 0);
+
+                                if (v > 0)
+                                        WaitTime = v;
+                        }
                         break;
 
 		case '?':
@@ -313,7 +344,8 @@ static int init(int argc, char **argv, struct animation *banner)
 		return 1;
 	if (init_proper_exit())
 		return 1;
-	if (animation_init(filenames, filenames_count, &_Fb, banner, DisplayFirst, StartFrame, EndFrame))
+	if (animation_init(filenames, filenames_count, &_Fb, banner,
+                DisplayFirst, StartFrame, EndFrame, WaitFrame, WaitTime))
 		return 1;
         string_list_destroy(filenames);
 

@@ -49,6 +49,14 @@ int animation_run(struct animation *banner)
 		if (rc)
 			break;
 
+                if (banner->frame_num == banner->wait_frame) {
+                        LOG(LOG_INFO, "Waiting at frame %d for %d ms\n", banner->wait_frame, banner->wait_time);
+                        const struct timespec sleep_time = {
+                                .tv_sec = banner->wait_time / 1000,
+                                .tv_nsec = (banner->wait_time % 1000) * 1000000L };
+                        nanosleep(&sleep_time, NULL);
+                }
+
                 int fnum = banner->frame_num + 1;
 
                 if (finish_animation) {
@@ -69,7 +77,7 @@ int animation_run(struct animation *banner)
 		if (banner->interval) {
 			const struct timespec sleep_time = {
 				.tv_sec = banner->interval / 1000,
-				.tv_nsec = (banner->interval % 1000) * 1000000 };
+				.tv_nsec = (banner->interval % 1000) * 1000000L };
 			nanosleep(&sleep_time, NULL);
 		}
 	}
@@ -78,8 +86,8 @@ int animation_run(struct animation *banner)
 }
 
 
-int animation_init(struct string_list *filenames, int filenames_count,
-		struct screen_info *fb, struct animation *a, int display_first, int loop_start, int loop_end)
+int animation_init(struct string_list *filenames, int filenames_count, struct screen_info *fb,
+                       struct animation *a, int display_first, int loop_start, int loop_end, int wait_frame, int wait_time)
 {
     int i;
 
@@ -96,6 +104,8 @@ int animation_init(struct string_list *filenames, int filenames_count,
     a->frame_count = filenames_count;
     a->loop_start = loop_start;
     a->loop_end = (loop_end == 0) ? filenames_count : loop_end;
+    a->wait_frame = wait_frame;
+    a->wait_time = wait_time;
 
     a->frames = malloc(filenames_count * sizeof(struct image_info));
     if (a->frames == NULL) {
