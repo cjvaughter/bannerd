@@ -267,23 +267,22 @@ static inline int init_proper_exit(void)
                 blink_file = open("/sys/class/graphics/fbcon/cursor_blink", O_RDWR | O_NONBLOCK);
                 if (blink_file == -1) {
                         LOG(LOG_ERR, "could not open cursor_blink file");
-		        return 0;	
                 }
-
-                int size = read(blink_file, &previous_console_blink, sizeof(char));
-                if(size < sizeof(char)) {
-                        LOG(LOG_ERR, "failed to read cursor_blink file");
-                        close(blink_file);
-                        blink_file = -1;
-                        return 0;
-                }
-
-                size = write(blink_file, &BLINK_OFF, sizeof(char));
-                if(size < sizeof(char)) {
-                        LOG(LOG_ERR, "failed to write cursor_blink file");
-                        close(blink_file);
-                        blink_file = -1;
-                        return 0;
+                else {
+                    int size = read(blink_file, &previous_console_blink, sizeof(char));
+                    if(size < sizeof(char)) {
+                            LOG(LOG_ERR, "failed to read cursor_blink file");
+                            close(blink_file);
+                            blink_file = -1;
+                    }
+                    else {
+                        size = write(blink_file, &BLINK_OFF, sizeof(char));
+                        if(size < sizeof(char)) {
+                                LOG(LOG_ERR, "failed to write cursor_blink file");
+                                close(blink_file);
+                                blink_file = -1;
+                        }
+                    }
                 }
         }
 
