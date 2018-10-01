@@ -10,13 +10,34 @@
  *  version 2 as published by the Free Software Foundation.
  */
 
+#include <time.h>
+#include <string.h>
 #include "animation.h"
 #include "image.h"
 #include "fb.h"
 #include "log.h"
 #include "string_list.h"
 
+#define PATH_MAX 1024
+
 volatile sig_atomic_t finish_animation = 0;
+
+static int look_for_process( const char* processname) {
+	FILE *fp;
+	int status, count = 0;
+	char path[PATH_MAX];
+	char pattern[PATH_MAX];
+	if( processname == NULL ) return 0;
+	strcpy(pattern, "pgrep ");
+	strcat(pattern, processname);
+	fp = popen(pattern, "r");
+	if (fp == NULL) return 0;
+	while (fgets(path, PATH_MAX, fp) != NULL)
+    count++;
+  status = pclose(fp);
+  return count;
+}
+
 
 static inline void center2top_left(struct image_info *image, int cx, int cy,
 		int *top_left_x, int *top_left_y)
@@ -80,6 +101,9 @@ int animation_run(struct animation *banner)
 				.tv_nsec = (banner->interval % 1000) * 1000000L };
 			nanosleep(&sleep_time, NULL);
 		}
+		if( banner->processname ) {
+			if( look_for_process(banner->processname)>0) break;
+		}
 	}
 
 	return rc;
@@ -87,7 +111,7 @@ int animation_run(struct animation *banner)
 
 
 int animation_init(struct string_list *filenames, int filenames_count, struct screen_info *fb,
-                       struct animation *a, int display_first, int loop_start, int loop_end, int wait_frame, int wait_time)
+                       struct animation *a, int display_first, int loop_start, int loop_end, int wait_frame, int wait_time, char* processname)
 {
     int i;
 
@@ -106,6 +130,7 @@ int animation_init(struct string_list *filenames, int filenames_count, struct sc
     a->loop_end = (loop_end == 0) ? filenames_count : loop_end;
     a->wait_frame = wait_frame;
     a->wait_time = wait_time;
+		a->processname = processname == NULL ? NULL : strdup(processname);
 
     a->frames = malloc(filenames_count * sizeof(struct image_info));
     if (a->frames == NULL) {
@@ -126,4 +151,3 @@ int animation_init(struct string_list *filenames, int filenames_count, struct sc
 
     return 0;
 }
-
