@@ -72,7 +72,7 @@ static int usage(char *cmd, char *msg)
 	printf("-e <num>,\n"
 		   "--end=<num>           Loop ends at frame <num>. Defaults to last frame.\n");
 	printf("-x <processname>,\n"
-		   "--process=<processname> Processname tp look for that will stop animation.\n");
+		   "--process=<processname> Processname to look for that will stop animation.\n");
 	printf("-p, --preserve        Do not restore framebuffer mode on exit which\n"
 	       "                      usually means leaving last displayed\n");
 	printf("-f, --finish          Allows the animation to complete before termination.\n");
@@ -258,54 +258,50 @@ static void sig_handler(int num)
         }
 }
 
-static inline int init_proper_exit(void)
-{
+static inline int init_proper_exit(void) {
 	struct sigaction action = { .sa_handler = sig_handler, };
 
 	sigemptyset(&action.sa_mask);
 
 	atexit(free_resources);
-	if (sigaction(SIGINT, &action, NULL)
-			|| sigaction(SIGTERM, &action, NULL))
+	if (sigaction(SIGINT, &action, NULL) || sigaction(SIGTERM, &action, NULL))
 		ERR_RET(-1, "could not install signal handlers");
 
-        if (DisableBlink) {
-                blink_file = open("/sys/class/graphics/fbcon/cursor_blink", O_RDWR | O_NONBLOCK);
-                if (blink_file == -1) {
-                        LOG(LOG_ERR, "could not open cursor_blink file");
-                }
-                else {
-                    int size = read(blink_file, &previous_console_blink, sizeof(char));
-                    if(size < sizeof(char)) {
-                            LOG(LOG_ERR, "failed to read cursor_blink file");
-                            close(blink_file);
-                            blink_file = -1;
-                    }
-                    else {
-                        size = write(blink_file, &BLINK_OFF, sizeof(char));
-                        if(size < sizeof(char)) {
-                                LOG(LOG_ERR, "failed to write cursor_blink file");
-                                close(blink_file);
-                                blink_file = -1;
-                        }
-                    }
-                }
-        }
+	if (DisableBlink) {
+		blink_file = open("/sys/class/graphics/fbcon/cursor_blink",
+				O_RDWR | O_NONBLOCK);
+		if (blink_file == -1) {
+			LOG(LOG_ERR, "could not open cursor_blink file");
+		} else {
+			int size = read(blink_file, &previous_console_blink, sizeof(char));
+			if (size < sizeof(char)) {
+				LOG(LOG_ERR, "failed to read cursor_blink file");
+				close(blink_file);
+				blink_file = -1;
+			} else {
+				size = write(blink_file, &BLINK_OFF, sizeof(char));
+				if (size < sizeof(char)) {
+					LOG(LOG_ERR, "failed to write cursor_blink file");
+					close(blink_file);
+					blink_file = -1;
+				}
+			}
+		}
+	}
 
 	return 0;
 }
 
-static inline int parse_interval(char *param, unsigned int *interval)
-{
+static inline int parse_interval(char *param, unsigned int *interval) {
 	char *p;
-	unsigned int v = (unsigned int)strtoul(param, &p, 0);
+	unsigned int v = (unsigned int) strtoul(param, &p, 0);
 	int is_fps = (p != param) && *p && !strcmp(p, "fps");
 
 	if (!*p || is_fps) {
 		if (is_fps) {
 			if (!v) { /* 0fps */
-				LOG(LOG_WARNING, "0fps argument in cmdline,"
-						" changed to 1fps");
+				LOG(LOG_WARNING,
+						"0fps argument in cmdline," " changed to 1fps");
 				v = 1;
 			}
 			v = 1000 / v;
@@ -317,8 +313,7 @@ static inline int parse_interval(char *param, unsigned int *interval)
 	return -1;
 }
 
-static int init(int argc, char **argv, struct animation *banner)
-{
+static int init(int argc, char **argv, struct animation *banner) {
 	int i;
 	struct string_list *filenames = NULL, *filenames_tail = NULL;
 	int filenames_count = 0;
@@ -329,13 +324,12 @@ static int init(int argc, char **argv, struct animation *banner)
 	if (i < 0)
 		return usage(argv[0], NULL);
 
-	for ( ; i < argc; ++i) {
-		if (banner->interval == (unsigned int)-1)
+	for (; i < argc; ++i) {
+		if (banner->interval == (unsigned int) -1)
 			if (!parse_interval(argv[i], &banner->interval))
 				continue;
 
-		filenames_tail = string_list_add(&filenames, filenames_tail,
-				argv[i]);
+		filenames_tail = string_list_add(&filenames, filenames_tail, argv[i]);
 		if (!filenames_tail)
 			return 1;
 		else
@@ -349,12 +343,12 @@ static int init(int argc, char **argv, struct animation *banner)
 		return 1;
 	if (init_proper_exit())
 		return 1;
-	if (animation_init(filenames, filenames_count, &_Fb, banner,
-                DisplayFirst, StartFrame, EndFrame, WaitFrame, WaitTime, processname))
+	if (animation_init(filenames, filenames_count, &_Fb, banner, DisplayFirst,
+			StartFrame, EndFrame, WaitFrame, WaitTime, processname))
 		return 1;
-        string_list_destroy(filenames);
+	string_list_destroy(filenames);
 
-	if (banner->interval == (unsigned int)-1)
+	if (banner->interval == (unsigned int) -1)
 		banner->interval = 1000 / 24; /* 24fps */
 
 	if (!Interactive && daemonify())

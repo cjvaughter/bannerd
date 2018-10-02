@@ -1,0 +1,7 @@
+Some useful tips see here https://yingtongli.me/blog/2016/12/21/splash.html
+
+convert to series of images:
+* ffmpeg -i original_animation.gif %04d.bmp
+
+Add background:
+* mogrify -background black -flatten -format bmp *.png
