@@ -1,5 +1,11 @@
                         A framebuffer animation daemon
 
+One simple feature added by sker:
+with the -x option bannerd will scan process list with popen( "pgrep ..." )
+for existence of a processname. As soon as this process appears, bannerd will
+stop and exit. This is useful when using bannerd as boot animation as it will
+stop exactly when boot process is finished (based on processname pattern).
+
   bannerd is a very simple program that reads several image files, forks into
 background and renders them to framebuffer with the configured interval. Since
 all the decompression (if any) work is done at the start, there is very little
@@ -101,7 +107,7 @@ amount of memory consumed by the process for large animations: for a 800 x 480
 require a lot of memory.
 
   At the moment, alpha blending of images is not supported.
-  
+
 
   SUPPORTED PLATFORMS
 
@@ -123,9 +129,3 @@ ask or to tell, please contact
   You are welcome to contribute to this program, or do whatever you want with
 the source code (provided that you know what you are doing). Please respect the
 license if you change source code, see COPYING for details.
-
-
-
-
-
-  

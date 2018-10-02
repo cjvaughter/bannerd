@@ -44,6 +44,7 @@ int DisplayFirst = 0; /* Displays the first frame while the rest finish loading 
 int DisableBlink = 0; /* Disables the consle cursor while running */
 int WaitFrame = -1; /* The frame to wait at */
 int WaitTime = 0; /* How long to wait (in ms) at the wait frame */
+char* processname = NULL; /* processname (for pgrep) to look for in order to stop animation. */
 
 int blink_file;
 char previous_console_blink;
@@ -68,18 +69,20 @@ static int usage(char *cmd, char *msg)
                "                      (may also be suppressed by syslog configuration)\n");
 	printf("-s <num>,\n"
 	       "--start=<num>         Loop starts at frame <num>. Defaults to 0.\n");
-        printf("-e <num>,\n"
-               "--end=<num>           Loop ends at frame <num>. Defaults to last frame.\n");
+	printf("-e <num>,\n"
+		   "--end=<num>           Loop ends at frame <num>. Defaults to last frame.\n");
+	printf("-x <processname>,\n"
+		   "--process=<processname> Processname to look for that will stop animation.\n");
 	printf("-p, --preserve        Do not restore framebuffer mode on exit which\n"
 	       "                      usually means leaving last displayed\n");
-        printf("-f, --finish          Allows the animation to complete before termination.\n");
-        printf("-d, --display-first   Display the first frame while the rest finish loading.\n");
-        printf("-b, --disable-blink   Disables the console cursor blink while running.\n");
-        printf("-w <num>\n"
-               "-t <time>\n"
-               "--wait <num>,\n"
-               "--wait-time <time>    Waits at the specified frame for the specified time (ms).\n"
-               "                      Both must be specified to take effect.\n");
+	printf("-f, --finish          Allows the animation to complete before termination.\n");
+	printf("-d, --display-first   Display the first frame while the rest finish loading.\n");
+	printf("-b, --disable-blink   Disables the console cursor blink while running.\n");
+	printf("-w <num>\n"
+		   "-t <time>\n"
+		   "--wait <num>,\n"
+		   "--wait-time <time>    Waits at the specified frame for the specified time (ms).\n"
+		   "                      Both must be specified to take effect.\n");
 	printf("interval              Interval in milliseconds between frames. If \'fps\'\n"
 	       "                      suffix is present then it is in frames per second\n"
 	       "                      Default:  41 (24fps)\n");
@@ -88,25 +91,24 @@ static int usage(char *cmd, char *msg)
 	return 1;
 }
 
-static int get_options(int argc, char **argv)
-{
+static int get_options(int argc, char **argv) {
 	static struct option _longopts[] = {
-			{"no-daemon",     no_argument, &Interactive, 1},  /* -D */
-			{"verbose",       no_argument, &LogDebug, 1},     /* -v */
-			{"start",         required_argument, 0, 's'},     /* -s */
-                        {"end",           required_argument, 0, 'e'},     /* -e */
-			{"preserve",      no_argument, &PreserveMode, 1}, /* -p */
-                        {"finish",        no_argument, &AllowFinish, 1},  /* -f */
-                        {"display-first", no_argument, &DisplayFirst, 1}, /* -d */
-                        {"disable-blink", no_argument, &DisableBlink, 1}, /* -b */
-                        {"wait",          required_argument, 0, 'w'},     /* -w */
-                        {"wait-time",     required_argument, 0, 't'},     /* -t */
-			{0, 0, 0, 0}
-	};
+	{ "no-daemon",		no_argument, 		&Interactive, 	 1  }, /* -D */
+	{ "verbose", 		no_argument,		&LogDebug,		 1  }, /* -v */
+	{ "start", 			required_argument, 	0, 				's' }, /* -s */
+	{ "end", 			required_argument, 	0, 				'e' }, /* -e */
+	{ "preserve", 		no_argument, 		&PreserveMode, 	 1  }, /* -p */
+	{ "finish", 		no_argument, 		&AllowFinish, 	 1  }, /* -f */
+	{ "display-first", 	no_argument, 		&DisplayFirst, 	 1  }, /* -d */
+	{ "disable-blink", 	no_argument, 		&DisableBlink, 	 1  }, /* -b */
+	{ "wait", 			required_argument, 	0, 				'w' }, /* -w */
+	{ "wait-time", 		required_argument, 	0, 				't' }, /* -t */
+	{ "process",		required_argument, 	0, 				'x' }, /* -x */
+	{ 0, 0, 0, 0 } };
 
 	while (1) {
 		int option_index = 0;
-		int c = getopt_long(argc, argv, "Dvs:e:pfdbw:t:", _longopts,
+		int c = getopt_long(argc, argv, "Dvs:e:pfdbw:t:x:", _longopts,
 				&option_index);
 
 		if (c == -1)
@@ -127,61 +129,65 @@ static int get_options(int argc, char **argv)
 			if (!optarg)
 				StartFrame = 0;
 			else {
-				int v = (int)strtol(optarg, NULL, 0);
+				int v = (int) strtol(optarg, NULL, 0);
 
 				if (v > 0)
 					StartFrame = v;
 			}
 			break;
 
-                case 'e':
-                        if (!optarg)
-                                EndFrame = 0;
-                        else {
-                                int v = (int)strtol(optarg, NULL, 0);
+		case 'e':
+			if (!optarg)
+				EndFrame = 0;
+			else {
+				int v = (int) strtol(optarg, NULL, 0);
 
-                                if (v > 0)
-                                        EndFrame = v;
-                        }
-                        break;
+				if (v > 0)
+					EndFrame = v;
+			}
+			break;
 
-                case 'p':
-                        PreserveMode = 1;
-                        break;
+		case 'p':
+			PreserveMode = 1;
+			break;
 
 		case 'f':
 			AllowFinish = 1;
 			break;
 
-                case 'd':
-                        DisplayFirst = 1;
-                        break;
+		case 'd':
+			DisplayFirst = 1;
+			break;
 
-                case 'b':
-                        DisableBlink = 1;
-                        break;
+		case 'b':
+			DisableBlink = 1;
+			break;
 
-                case 'w':
-                        if (!optarg)
-                                WaitFrame = -1;
-                        else {
-                                int v = (int)strtol(optarg, NULL, 0);
+		case 'w':
+			if (!optarg)
+				WaitFrame = -1;
+			else {
+				int v = (int) strtol(optarg, NULL, 0);
 
-                                if (v >= 0)
-                                        WaitFrame = v;
-                        }
-                        break;
+				if (v >= 0)
+					WaitFrame = v;
+			}
+			break;
 
-                case 't':
-                        if (!optarg)
-                                WaitTime = 0;
-                        else {
-                                int v = (int)strtol(optarg, NULL, 0);
+		case 't':
+			if (!optarg)
+				WaitTime = 0;
+			else {
+				int v = (int) strtol(optarg, NULL, 0);
 
-                                if (v > 0)
-                                        WaitTime = v;
-                        }
-                        break;
+				if (v > 0)
+					WaitTime = v;
+			}
+			break;
+
+		case 'x':
+			if( optarg ) processname = optarg;
+			break;
 
 		case '?':
 			/* The error message has already been printed
@@ -252,54 +258,50 @@ static void sig_handler(int num)
         }
 }
 
-static inline int init_proper_exit(void)
-{
+static inline int init_proper_exit(void) {
 	struct sigaction action = { .sa_handler = sig_handler, };
 
 	sigemptyset(&action.sa_mask);
 
 	atexit(free_resources);
-	if (sigaction(SIGINT, &action, NULL)
-			|| sigaction(SIGTERM, &action, NULL))
+	if (sigaction(SIGINT, &action, NULL) || sigaction(SIGTERM, &action, NULL))
 		ERR_RET(-1, "could not install signal handlers");
 
-        if (DisableBlink) {
-                blink_file = open("/sys/class/graphics/fbcon/cursor_blink", O_RDWR | O_NONBLOCK);
-                if (blink_file == -1) {
-                        LOG(LOG_ERR, "could not open cursor_blink file");
-                }
-                else {
-                    int size = read(blink_file, &previous_console_blink, sizeof(char));
-                    if(size < sizeof(char)) {
-                            LOG(LOG_ERR, "failed to read cursor_blink file");
-                            close(blink_file);
-                            blink_file = -1;
-                    }
-                    else {
-                        size = write(blink_file, &BLINK_OFF, sizeof(char));
-                        if(size < sizeof(char)) {
-                                LOG(LOG_ERR, "failed to write cursor_blink file");
-                                close(blink_file);
-                                blink_file = -1;
-                        }
-                    }
-                }
-        }
+	if (DisableBlink) {
+		blink_file = open("/sys/class/graphics/fbcon/cursor_blink",
+				O_RDWR | O_NONBLOCK);
+		if (blink_file == -1) {
+			LOG(LOG_ERR, "could not open cursor_blink file");
+		} else {
+			int size = read(blink_file, &previous_console_blink, sizeof(char));
+			if (size < sizeof(char)) {
+				LOG(LOG_ERR, "failed to read cursor_blink file");
+				close(blink_file);
+				blink_file = -1;
+			} else {
+				size = write(blink_file, &BLINK_OFF, sizeof(char));
+				if (size < sizeof(char)) {
+					LOG(LOG_ERR, "failed to write cursor_blink file");
+					close(blink_file);
+					blink_file = -1;
+				}
+			}
+		}
+	}
 
 	return 0;
 }
 
-static inline int parse_interval(char *param, unsigned int *interval)
-{
+static inline int parse_interval(char *param, unsigned int *interval) {
 	char *p;
-	unsigned int v = (unsigned int)strtoul(param, &p, 0);
+	unsigned int v = (unsigned int) strtoul(param, &p, 0);
 	int is_fps = (p != param) && *p && !strcmp(p, "fps");
 
 	if (!*p || is_fps) {
 		if (is_fps) {
 			if (!v) { /* 0fps */
-				LOG(LOG_WARNING, "0fps argument in cmdline,"
-						" changed to 1fps");
+				LOG(LOG_WARNING,
+						"0fps argument in cmdline," " changed to 1fps");
 				v = 1;
 			}
 			v = 1000 / v;
@@ -311,8 +313,7 @@ static inline int parse_interval(char *param, unsigned int *interval)
 	return -1;
 }
 
-static int init(int argc, char **argv, struct animation *banner)
-{
+static int init(int argc, char **argv, struct animation *banner) {
 	int i;
 	struct string_list *filenames = NULL, *filenames_tail = NULL;
 	int filenames_count = 0;
@@ -323,13 +324,12 @@ static int init(int argc, char **argv, struct animation *banner)
 	if (i < 0)
 		return usage(argv[0], NULL);
 
-	for ( ; i < argc; ++i) {
-		if (banner->interval == (unsigned int)-1)
+	for (; i < argc; ++i) {
+		if (banner->interval == (unsigned int) -1)
 			if (!parse_interval(argv[i], &banner->interval))
 				continue;
 
-		filenames_tail = string_list_add(&filenames, filenames_tail,
-				argv[i]);
+		filenames_tail = string_list_add(&filenames, filenames_tail, argv[i]);
 		if (!filenames_tail)
 			return 1;
 		else
@@ -343,12 +343,12 @@ static int init(int argc, char **argv, struct animation *banner)
 		return 1;
 	if (init_proper_exit())
 		return 1;
-	if (animation_init(filenames, filenames_count, &_Fb, banner,
-                DisplayFirst, StartFrame, EndFrame, WaitFrame, WaitTime))
+	if (animation_init(filenames, filenames_count, &_Fb, banner, DisplayFirst,
+			StartFrame, EndFrame, WaitFrame, WaitTime, processname))
 		return 1;
-        string_list_destroy(filenames);
+	string_list_destroy(filenames);
 
-	if (banner->interval == (unsigned int)-1)
+	if (banner->interval == (unsigned int) -1)
 		banner->interval = 1000 / 24; /* 24fps */
 
 	if (!Interactive && daemonify())
